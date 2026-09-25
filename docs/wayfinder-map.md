@@ -1,45 +1,11 @@
 # Wayfinder Map: Personal Work Footprint Archive
 
 > **Mirror of GitHub issue #1** ([SoongGuanLeong/footprint#1](https://github.com/SoongGuanLeong/footprint/issues/1)) — the issue is canonical.
-> Synced 2026-09-25 (after #6 and #7 closed — all children closed). Edit the issue, then re-sync this file. Do not edit here.
-
-⣾
-
-⣽
-
-⣻
-
-⢿
-
-
-⣾
-
-⣽
-
-⣻
-
-⢿
-
-
-⣾
-
-⣽
-
-⣻
-
-⢿
-
-
-⣾
-
-⣽
-
-⣻
-
-⢿
-# Wayfinder Map: Personal Work Footprint Archive
+> Synced 2026-09-25 (map **closed** — all six children closed, way to build clear). Edit the issue, then re-sync this file. Do not edit here.
 
 > **This issue is the canonical map.** Mirrored in the repo at `docs/wayfinder-map.md`. Edit this issue, then re-sync that file — not the reverse.
+
+> **Reached 2026-09-25.** The way to build is clear and no architecture-level decision remains open. See [Handoff](#handoff).
 
 ## Destination
 
@@ -67,20 +33,34 @@ Spec for a **distributable, participant-only Personal Work Footprint archive** �
 - **#3 PDPA 2010 boundary** — participant-only is necessary but **not sufficient**: PDPA applies in full, there is no blanket employment exemption, no two-party-consent statute and no CMA s.234 participant carve-out. Defensible boundary = participant-only + overt + purpose-limited to own recall + no third-party disclosure + sensitive data excluded + local encrypted store in Malaysia + retention-limited + employer policy/DLP respected. [memo](https://github.com/SoongGuanLeong/footprint/blob/main/docs/research/pdpa-2010-boundary.md)
 - **#4 Hermes agent audit** — **use, don't fork, build the store**: Hermes meets local run, transcription and extensibility, only *operates* (does not archive) connectors, and ships no at-rest encryption (plaintext SQLite). Pair it with a separate encrypted archive store, a participant-only capture filter, and own corpus ETL/index. [memo](https://github.com/SoongGuanLeong/footprint/blob/main/docs/research/hermes-agent-audit.md)
 
-## Not yet specified
+## Handoff
 
-- Data retention duration and deletion policy: how long to keep footprint, when to purge.
-- Search + recall UX: how user queries footprint (timeline, semantic search, meeting summary).
-- Transcription pipeline accuracy for Malay/English mixed meetings (code-switching).
-- Integration with company DLP / audit logging: does local capture trigger alerts.
-- Export and portability: leaving company, what travels.
+The map's job was to clear the way to build, and it is clear: no architecture-level question remains open, and both planning artifacts exist.
+
+- **Spec** — `docs/spec.md`, a tracked repo file per the #6 decision, discussed on [#8](https://github.com/SoongGuanLeong/footprint/issues/8). Eleven sections plus two appendices: the ten decided in #6, plus a User stories section the spec template requires.
+- **Build tickets** — [#9](https://github.com/SoongGuanLeong/footprint/issues/9)–[#23](https://github.com/SoongGuanLeong/footprint/issues/23), fifteen tracer-bullet tickets with native blocking edges. Frontier at close: #9, #10, #11, #12.
+- **ADRs** — five. Four are [#12](https://github.com/SoongGuanLeong/footprint/issues/12); the external pin choice is an acceptance criterion of [#14](https://github.com/SoongGuanLeong/footprint/issues/14), because it cannot be decided before the pin is chosen.
+
+### The five former gaps, and where they now live
+
+| Formerly not specified | Now |
+|---|---|
+| Data retention duration and deletion policy | Spec §8 — keep everything by default, pruning is an explicit user action, deletion appends a tombstone. Ticket #17. |
+| Search + recall UX | Spec §9 — full-text and semantic search, timeline, person-scoped retrieval, coverage. Tickets #16 and #18. |
+| Transcription accuracy for Malay/English code-switching | Spec §2 — promoted to a **gating spike** that decides whether meetings ships in v1 or v1.5. Ticket #9. |
+| Integration with company DLP / audit logging | Spec INV-11 plus the [policy checklist](https://github.com/SoongGuanLeong/footprint/blob/main/docs/policy-checklist.md) — the product surfaces the checklist rather than pretending to enforce it. |
+| Export and portability | Spec §9, with open question A-12. Ticket #19. |
+
+### What closing the map does not mean
+
+Twelve open questions remain, each with an explicit trigger in the spec's Appendix A. They are **deferred by design, not unresolved** — each names the event that resolves it. The two spikes (#9, #10) are empirical work gating a scope choice, which is why #6 put them in the build tickets rather than the map.
 
 ## Out of scope
 
 - Company-wide surveillance or data where user was not participant.
 - Multi-user or team deployments: one store per install, one user per store.
 - Real-time covert recording of others without consent or access.
-- Full build implementation (map is planning only unless Notes override).
+- Full build implementation — planned in #9–#23 and tracked there, not here.
 - Formal legal advice: memo is research, not counsel.
 
 ## Child tickets
@@ -91,3 +71,4 @@ Spec for a **distributable, participant-only Personal Work Footprint archive** �
 - [x] #5 04 - Architecture and storage decision (grilling) - closed
 - [x] #6 05 - Spec scope and handoff shape (grilling) - closed
 - [x] #7 06 - Company policy checklist (task) - closed
+
