@@ -1,7 +1,7 @@
 # Wayfinder Map: Personal Work Footprint Archive
 
 > **Mirror of GitHub issue #1** ([SoongGuanLeong/footprint#1](https://github.com/SoongGuanLeong/footprint/issues/1)) — the issue is canonical.
-> Synced 2026-09-25 (after #5 closed). Edit the issue, then re-sync this file. Do not edit here.
+> Synced 2026-09-25 (after #6 and #7 closed — all children closed). Edit the issue, then re-sync this file. Do not edit here.
 
 ⣾
 
@@ -60,6 +60,8 @@ Spec for a **distributable, participant-only Personal Work Footprint archive** �
 
 <!-- one line per closed ticket, gist + link -->
 
+- **#6 Spec scope and handoff shape** — the spec is a **tracked repo file** (overriding the earlier "specs live as issues" convention), with **10 sections plus an appendix** and boundary rules deliberately ordered *before* architecture; "way clear" is a **checklist plus a source-of-truth check**; the two spikes are `/to-tickets` output rather than map tickets; research is referenced and only its rules extracted. [decision record](https://github.com/SoongGuanLeong/footprint/issues/6#issuecomment-5830632332)
+- **#7 Company policy checklist** — an **audit instrument** (clauses to look for, 20 questions for IT/HR, evidence to keep, a three-condition go/no-go gate, re-check triggers), distinct from #3's §10 which states what policy must cover. Generic by design, since each installer has a different employer. [checklist](https://github.com/SoongGuanLeong/footprint/blob/main/docs/policy-checklist.md)
 - **#5 Architecture and storage decision** — distributable participant-only archive, one store per install, **application-level encryption** (SQLCipher + sqlite-vec, so the FTS index and embeddings sit inside the same cipher boundary) since the host's disk encryption is not assumed; **local-only** inference and transcription by default, embeddings included; **per-user daemon + CLI** with a **read-only, confined MCP surface over stdio** that fails closed when locked; **Windows first**, macOS second, Linux third; recall primary with evidence as an invariant. [decision record](https://github.com/SoongGuanLeong/footprint/issues/5#issuecomment-5829911933)
 - **#2 Malaysia workplace stack survey** — participant-only capture is achievable via delegated per-user OAuth (Teams 1:1/group chat, M365 mail, Gmail, Google Chat, Slack, Zoom, Google Meet metadata); Teams channels, the Teams transcript/recording APIs, Teams Export, Gmail domain-wide delegation and `Mail.Read.All` sit outside the boundary; personal WhatsApp is a genuine gap (export-only). [memo](https://github.com/SoongGuanLeong/footprint/blob/main/docs/research/malaysia-workplace-stack.md)
 - **#3 PDPA 2010 boundary** — participant-only is necessary but **not sufficient**: PDPA applies in full, there is no blanket employment exemption, no two-party-consent statute and no CMA s.234 participant carve-out. Defensible boundary = participant-only + overt + purpose-limited to own recall + no third-party disclosure + sensitive data excluded + local encrypted store in Malaysia + retention-limited + employer policy/DLP respected. [memo](https://github.com/SoongGuanLeong/footprint/blob/main/docs/research/pdpa-2010-boundary.md)
@@ -87,5 +89,5 @@ Spec for a **distributable, participant-only Personal Work Footprint archive** �
 - [x] #3 02 - PDPA Malaysia 2010 boundary (research) - closed
 - [x] #4 03 - Hermes agent capability audit (research) - closed
 - [x] #5 04 - Architecture and storage decision (grilling) - closed
-- [ ] #6 05 - Spec scope and handoff shape (grilling) - unblocked
-- [ ] #7 06 - Company policy checklist (task) - unblocked
+- [x] #6 05 - Spec scope and handoff shape (grilling) - closed
+- [x] #7 06 - Company policy checklist (task) - closed
