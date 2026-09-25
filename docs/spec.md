@@ -543,15 +543,17 @@ Removing footprint must remove the daemon's auto-start registration and the sche
 
 ## Testing decisions
 
-### The two seams
+### The three seams
 
-**Two seams, both at boundaries the product already has.** S1 and S2 are the architectural seams, and the prior art at the end of this section confirms them. It also identifies one property neither can observe, and proposes a **test-only** addition for it — A-13 — which is deliberately not a production abstraction.
+**Three seams: two architectural, one test-only.** S1 and S2 sit at boundaries the product already has, and the prior art at the end of this section confirms them. It also forced the third — see "Why the store seam is test-only" below.
 
 **S1 — the daemon process boundary, entered two ways.** The CLI for write and operational paths (capture, unlock, import, exclude, prune, export, verify) and **MCP stdio for read paths**. Tests drive the real daemon process. Evidence verification rides this seam by exposing a `verify` CLI verb, so the verifier needs no seam of its own.
 
 **S2 — the connector adapter interface**, with **fake or recorded providers** standing in for real tenant APIs. This seam is unavoidable: the network is outside the product's control, and no test suite can be built on live Teams, Gmail or Slack tenants.
 
-**Why not a third seam at the store.** A direct store API would make data-model and cipher-boundary tests faster and more precise, but it would couple tests to internals and force the spec to pin module boundaries that should stay free to move. The two properties that most tempt a store-level seam are both reachable black-box: "the raw file contains no plaintext" is a property of the *file*, and "a wrong key fails closed" is observable through the CLI. **The fewer seams across the codebase, the better, and two is the floor here rather than a compromise.**
+**S3 — a test-only store seam.** A `Store` interface whose only production implementation is SQLCipher-on-disk, and whose test surface is "open the real file with the real key" and "scan the real bytes". **Test-only by design: one production implementation, no second implementation to justify an abstraction.**
+
+**Why the store seam is test-only, and why it is not a data-model seam.** A production store abstraction for *data-model* tests was rejected, and that reasoning still holds: it would couple tests to internals and force the spec to pin module boundaries that should stay free to move. S3 exists for a different reason, and it was the research that forced it. The spec originally claimed "the raw file contains no plaintext" was reachable black-box because it is a property of the *file*. **That claim was wrong.** S1 can *trigger* writes but cannot *observe* the file, and the property is asserted by scanning bytes on disk — the main file, every `-wal` / `-shm` / `-journal` sidecar, any `VACUUM INTO` target, and the OS temp directory — with a deliberately-plaintext control database as the positive control. No seam in the spec could do that. At-rest encryption is the product's stated differentiator (§4), so it is the one claim that must be provable rather than assumed.
 
 ### What makes a good test
 
@@ -568,7 +570,7 @@ Removing footprint must remove the daemon's auto-start registration and the sche
 |---|---|---|
 | T-1 | The six advertised MCP tools, and **only** those six; no write, SQL, web or URL tool exists | S1 (MCP) |
 | T-2 | Every MCP tool fails closed with a structured error while the store is locked, and the server never prompts for a key | S1 (MCP) |
-| T-3 | The raw store file contains no plaintext for any ingested content — **including FTS5 terms, the FTS5 shadow tables and embedding bytes** — with a positive control | S1 triggers the writes; the **assertion** needs the store seam (A-13) |
+| T-3 | The raw store file contains no plaintext for any ingested content — **including FTS5 terms, the FTS5 shadow tables and embedding bytes** — with a positive control | S1 triggers the writes; the **assertion** is at S3 |
 | T-4 | A wrong passphrase fails closed and the store is not readable | S1 (CLI) |
 | T-5 | Per-source participant filtering: non-participant fixtures produce zero records | S2 |
 | T-6 | Exclusion is pre-ingest: an excluded record reaches neither the index, the embeddings, nor the manifest | S1 (CLI + verify) |
@@ -641,13 +643,13 @@ Researched after the seam decision. It **confirms S1 and S2 as the architectural
 
 **This is not theoretical.** CVE-2026-56865 / GO-2026-6179: `golang.org/x/mod/sumdb/tlog`'s `tileHashReader.ReadHashes` did not verify all tiles against their parents, so a malicious GOPROXY could forge up to two sumdb tiles and **bypass the GOSUMDB check**, persisting attacker-controlled module content. CVSS 8.4, CWE-347, fixed in `x/mod` 0.40.0 — in a mature, heavily reviewed library. **This is the strongest single argument for treating the verifier as a separately tested artifact**, and why its tests deliberately do **not** go through S1 even though the CLI verb that invokes it does.
 
-#### The gap this surfaced — needs a decision
+#### The gap this surfaced — resolved: S3
 
 The research **confirms S1 and S2 are the right architectural seams**, and identifies one property **neither seam can observe**: **store encryption-at-rest**. "Nothing leaks outside the cipher boundary" is a property of a *file*, asserted by scanning bytes on disk including the OS temp directory and every journal and WAL sidecar. S1 can *trigger* writes, but it cannot *observe* the file. Since this is a hard product claim (§4 — the host's disk encryption is not assumed), it is the one property in the spec that currently has no way to be tested.
 
-The recommendation is a **third, test-only seam**: a `Store` interface whose only production implementation is SQLCipher-on-disk, and whose test surface is "open the real file with the real key" and "scan the real bytes". Deliberately **not** a production abstraction with two implementations — the prior art (SQLCipher's own suite, and the canary plus positive-control pattern) lives entirely at that level, and prior art treats at-rest encryption as its own concern, separate from the database's own suite. See [Appendix A, A-13](#appendix-a--open-questions-with-triggers).
+**Resolved: S3 is added, as a test-only seam.** The prior art treats at-rest encryption as its own concern, separate from the database's own suite — SQLCipher's own tests live at that level, as does the canary-plus-positive-control pattern.
 
-A second candidate is flagged rather than resolved: if **"local-only by default"** is a property the product intends to *test* rather than assert, S1 can observe inference outputs but cannot prove the absence of egress, and that would be a fourth seam. The recommendation is to keep it an asserted property with a static check rather than a seam — unless the claim is one the product wants to prove.
+**A fourth seam was considered and rejected.** If "local-only by default" were a *tested* rather than asserted property, S1 could observe inference outputs but could not prove the absence of egress. Proving an absence is materially harder than proving a file has no plaintext, and the claim is already enforced by construction (no cloud endpoint is configured, no embedding API is called). It stays an asserted property with a static check, not a seam.
 
 ## Out of scope
 
@@ -691,7 +693,6 @@ Each carries the **event that resolves it**, so none can be left dangling indefi
 | A-10 | **M365 versus Google Workspace prioritisation.** No installed-base split for Malaysia is established, so prioritisation between the two connector families is a judgement call rather than a sourced conclusion. | **When a second connector family is added.** |
 | A-11 | **Per-source capture cadence.** Each source has its own retention window (Google Meet transcript entries 30 days; Teams deleted messages 21 days; deleted users/teams 30 days). The polling interval per source needs to be set against the tightest window it serves. | **At connector implementation**, per source. |
 | A-12 | **Export format and portability contract.** What travels with the user, and in what format, given that the store is encrypted and the tool may not exist in 20 years. | **Before v1 ships**, since it is a user-facing promise. |
-| A-13 | **A test-only seam for store encryption-at-rest.** "Nothing leaks outside the cipher boundary" is a property of a *file*, and neither S1 nor S2 can observe it — S1 can trigger writes but cannot scan bytes. Recommendation: a `Store` interface whose only production implementation is SQLCipher-on-disk, **test-only**, deliberately not a production abstraction with two implementations. A second candidate — treating "local-only by default" as a *tested* rather than asserted property — would be a fourth seam; the recommendation is a static check instead. | **Before the first store test is written.** |
 
 ## Appendix B — Referenced decisions, ADRs and research
 
