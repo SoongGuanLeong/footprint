@@ -1,6 +1,8 @@
 # Issue tracker: GitHub
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+**Issues** for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+
+**Specs do not.** The buildable spec is a tracked repo file, because it is a build input: tickets and code reference it, and it needs diff history next to the code it describes. The issue tracker is the **discussion and decision surface**, not the home of the spec. (Decided in #6; this overrides the earlier convention that specs live as issues.)
 
 ## Conventions
 
@@ -28,6 +30,10 @@ GitHub shares one number space across issues and PRs, so a bare `#42` may be eit
 ## When a skill says "publish to the issue tracker"
 
 Create a GitHub issue.
+
+## When a skill says "publish the spec"
+
+Write it to a tracked file in the repo, and open or use a GitHub issue only as the discussion surface. See the spec-location decision in #6.
 
 ## When a skill says "fetch the relevant ticket"
 
