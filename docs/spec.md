@@ -615,6 +615,8 @@ Researched after the seam decision. It **confirms S1 and S2 as the architectural
 
 **Enumerate the leak vectors as separate tests**, because each is a real regression risk: a plaintext `ATTACH` target; `VACUUM INTO`; `PRAGMA temp_store=FILE`; a `-wal` left behind after a crash; `sqlite3_backup`; the export verb; crash mid-transaction then restart; `PRAGMA mmap_size`.
 
+**Adjacent prior art** for format-level encryption test vectors: `rclone`'s `backend/crypt` tests cover round-trip and nonce handling. **Provenance caveat, recorded because it matters for confidence:** the canary-plus-positive-control pattern above is **derived from SQLCipher's design doc, not borrowed from a named project** — no project shipping exactly that pattern as a named test was verified. Treat it as a reasoned recommendation rather than established practice.
+
 #### Per-user daemon lifecycle, without a CI machine per OS
 
 **`uniservice`** is the closest match: it delegates to `systemd --user` / LaunchAgents / Windows Scheduled Tasks, and its suite is deliberately two-layer. **Artifact tests run everywhere** and assert the *generated unit / plist / Task XML as data*; **live lifecycle tests are opt-in and capability-gated** — skipped unless an environment variable is set, and each additionally skips itself when the host lacks a usable manager (`systemctl --user is-system-running`, `launchctl print gui/$uid`, `schtasks.exe`). The Linux live test asserts the full contract: add → appears in `list_info()` → `enabled` → `running` → remove → gone.
@@ -624,6 +626,8 @@ Researched after the seam decision. It **confirms S1 and S2 as the architectural
 **Single-instance locking.** `portalocker` / `filelock` abstract `fcntl.flock` / `lockf` and `msvcrt.locking` / `LockFileEx`. Test by launching **two real subprocesses** and asserting the second exits with a distinct code — **and that the lock is released after `SIGKILL`**, since a stale lock blocking restart is the classic failure.
 
 **`docker-systemctl-replacement`** executes unit files without systemd, so `systemctl --user enable/start/status` semantics can be exercised in a plain container with no user session bus.
+
+**`kardianos/service`** (Go) is the canonical cross-platform service-install library — one config producing a per-platform artifact — and models testing config generation as data. **`pytest-testinfra`** asserts *deployed state* (`service("x").is_enabled`, `is_running`) over SSH or a container: the right tool for install, uninstall and auto-start assertions on a real machine, and the wrong tool for unit logic.
 
 **Regret this avoids:** mocking `systemctl` / `launchctl` / `schtasks`. Tests pass, the unit file is malformed, the daemon never auto-starts. Every project surveyed either tests the generated artifact as data or runs the real manager.
 
@@ -640,6 +644,8 @@ Researched after the seam decision. It **confirms S1 and S2 as the architectural
 **Test the verifier against a third thing, never against the writer.** The library keeps a deliberately naive reference implementation (`refRootHash`, `refInclusionProof`, `refConsistencyProof`) that "directly implement[s] the definitions from RFC 6962", and its own comment says it exists "only for testing correctness of other more flexible and performant algorithms". Writer and verifier are each checked against the reference — never against each other — plus **checked-in frozen fixtures** (log + proof + root) so the verifier test never runs the writer, which is the only way to catch a *coordinated* writer-and-verifier bug. Fuzzing runs in both directions: writer against the reference, and writer through to the verifier.
 
 **Tamper cases are first-class tests:** truncate the proof, flip a hash byte, swap sibling order, use a proof for a different index, use a consistency proof for an older size, reuse a leaf hash as an interior node. Each must be rejected.
+
+**Differential-test against a second implementation:** `google/certificate-transparency-go`'s `merkle` package, and Go's own tile-based `golang.org/x/mod/sumdb/tlog`.
 
 **This is not theoretical.** CVE-2026-56865 / GO-2026-6179: `golang.org/x/mod/sumdb/tlog`'s `tileHashReader.ReadHashes` did not verify all tiles against their parents, so a malicious GOPROXY could forge up to two sumdb tiles and **bypass the GOSUMDB check**, persisting attacker-controlled module content. CVSS 8.4, CWE-347, fixed in `x/mod` 0.40.0 — in a mature, heavily reviewed library. **This is the strongest single argument for treating the verifier as a separately tested artifact**, and why its tests deliberately do **not** go through S1 even though the CLI verb that invokes it does.
 
