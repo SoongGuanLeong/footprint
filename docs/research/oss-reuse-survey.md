@@ -150,7 +150,7 @@ Hardware is not the constraint: `large-v3` is ~3GB and `turbo` ~1.7GB in FP16, s
 
 **The unsolved part, stated plainly:** a process that decrypts to capture must hold the key in memory. There is no clean answer. The best achievable is a wrapped master key in the OS credential store (libsecret / Keychain) so capture can run after login, which sets the security floor at the OS login session. That is a real weakening and belongs in an ADR, not a footnote.
 
-**Known caveat:** the Python wheels for SQLCipher (`sqlcipher3-binary`) are Linux-x86_64 only — no macOS/arm64 — so a build or vendor step is required for a cross-platform product.
+**Packaging (corrected 2026-09-25):** the `sqlcipher3` package ships prebuilt wheels for **Linux** (manylinux and musllinux, x86_64/aarch64/i686), **macOS** (universal2, x86_64, arm64) and **Windows** (win32, win_amd64, win_arm64) as of 0.6.2, each statically bundling SQLCipher 4.x — so **no build toolchain is required on any of the three platforms**. The earlier "Linux-x86_64 only" limitation applied to the superseded `sqlcipher3-binary` package name, which never shipped a macOS or Windows wheel. Verified by downloading and unpacking the wheels.
 
 ---
 
