@@ -120,6 +120,38 @@ SmartScreen evaluates publisher reputation and file-hash reputation. Unsigned me
 
 Individual-specific products exist (SSL.com sells an "IV Code Signing" certificate with a personal name and no business documents), but **pricing could not be verified** (JS-rendered) and whether an IV certificate is SmartScreen-equivalent to OV is an **open question, not a given**.
 
+### Can a Malaysian individual actually buy a code-signing certificate?
+
+**Yes — the fallback path is purchasable. It is not blocked, and it does not require a Sdn Bhd.** This closes the open question left by the platform research.
+
+**The standards position.** CA/Browser Forum Code Signing Baseline Requirements v3.11 (read from the PDF) defines exactly **two** certificate classes: *Non-EV Code Signing* (policy OID `2.23.140.1.4.1`) and *EV Code Signing* (`2.23.140.1.3`). **There is no "IV" OID.** "Individual Validation" is a marketing name for a Non-EV certificate whose Subject is a natural person's legal name. Crucially, §3.2.3 *Authentication of individual identity* defines an **"Individual Applicant"** as a first-class subscriber — "an Applicant who is a natural person and requests a Certificate that will list the Applicant's legal name as the Certificate's Subject" — requiring a government-issued photo ID plus address verification. **No business entity is required by the standard.**
+
+**Per-CA reality, marketing versus validation checklist:**
+
+| CA | Individual route? | Notes |
+|---|---|---|
+| **Certum** | **Yes, explicit** | Standard cert is "for an individual or a company"; required documents for an individual are a government photo ID **plus a utility bill**. Company registration is required only for organization-data certs. ~€139–209/yr, **cloud signing (SimplySign) included** |
+| **SSL.com** | **Yes, as "IV"** | US$129/yr (US$96.75/yr at 5 years); "validates your personal identity: government-issued ID required"; 3–5 day validation after a callback to a listed phone. **Its "OV" product, by contrast, requires business registration documents** |
+| **Sectigo** | **Probably** | Its FAQ says validation verifies "the legal existence of the organization **or individual** named in the Organization field". Not independently confirmed — its detailed KB was unreadable (JS/maintenance) |
+| **DigiCert** | **No** | "a Code Signing certificate is tied to your Organization Name only"; orders go through organization validation. Also far pricier than the assumed band: US$696–996/yr |
+| **GlobalSign** | **No** | "Standard Code Signing Certificates undergo standard organization validation". Prices JS-rendered, not readable |
+
+**The crux: does an individual-validated certificate build SmartScreen reputation?** Microsoft never documents this, but the structural evidence says yes. Microsoft's Root Program Requirements list exactly **one** code-signing policy OID a CA may declare — `2.23.140.1.4.1`, the same Non-EV class as OV — and SmartScreen's publisher-reputation signal is keyed to the **signing certificate identity**, not to whether the Subject is a person or a company. SSL.com claims IV reputation "builds over time". **Treat this as a high-confidence inference, not a guarantee, and get it in writing from the CA before paying.**
+
+**What no certificate does:** since 2024, EV no longer bypasses SmartScreen — Microsoft's own words are that paying the EV premium for that purpose "is no longer justified". So **no certificate removes the first-download warning.** A certificate only (i) removes "Unknown Publisher" and shows a verified name, and (ii) lets publisher reputation accumulate across versions. The only zero-warning route remains the Microsoft Store.
+
+**SSM sole proprietorship — cheap insurance, not a requirement.** Under a personal name RM30/year, under a trade name RM60/year, registered online at EzBiz, with the certificate obtainable "within one hour from the time payment is made" (MalaysiaBiz, the government portal). The CABF BR defines "Business Entity" to include **sole proprietorships**, and an SSM number satisfies §3.2.2.1's requirement for a registration identifier. So if individual validation cannot be confirmed, a sole proprietorship unlocks the unambiguous OV routes for about the price of a coffee. Note no CA publishes Malaysia-specific sole-trader guidance, so acceptance rests on the BR's generic language rather than a vendor statement.
+
+**Do not register a Sdn Bhd.** Roughly RM1,000 SSM fee plus RM150/yr annual return plus a company secretary at RM1,200–2,400/yr — call it RM2,000–5,000+ in year one, against RM30–60 for the sole proprietorship. And it buys nothing, because EV no longer bypasses SmartScreen anyway.
+
+**D-U-N-S is not required.** Zero hits for "D-U-N-S" or "Dun & Bradstreet" in the CABF BR; not a Microsoft requirement either. CAs may use D&B as one optional third-party data source for an address or phone check. If wanted anyway, D&B issues it free, with normal processing up to 30 business days.
+
+**Hardware is avoidable.** The BR requires the private key in a Hardware Crypto Module, but explicitly permits a cloud signing service. So: **SSL.com eSigner** US$20/month or US$180/year; **Certum SimplySign included with the certificate** (infrastructure stated to be 100% within the EU); DigiCert KeyLocker US$996/yr. A physical SSL.com YubiKey is US$379 one-time, but the page's fulfilment text is written for the US market ("2–3 day US shipping") and **international shipping cost and delay to Malaysia are undocumented**. None of these is documented as geo-restricted — unlike Azure Artifact Signing, which explicitly limits individuals to the USA and Canada.
+
+**Two practical frictions to check with the CA before ordering:** Sectigo requires the certificate email to be at a domain **owned by the certificate subject** (a problem for an individual with no domain), and both SSL.com and Sectigo require a callback to a "verified"/"listed" phone number — which may be awkward for a mobile-only individual.
+
+**Bottom line:** direct-download signing **is** purchasable by this person, via SSL.com IV or Certum Standard without any entity at all. The Microsoft Store MSIX route is still the simplest and the only zero-SmartScreen-warning path, and it is free and worldwide — but it is **not** the only realistic Windows option, which is what the earlier research had left open.
+
 ### Linux — no OS-level gate
 
 No notarisation equivalent, no vendor gatekeeper. Repo signing (GPG for deb/rpm) is free and only matters if running your own repository. Channels: tarball, deb, rpm, AppImage, Flatpak (Flathub review, free), Snap. All free; the cost is CI and packaging time.
@@ -144,7 +176,7 @@ No notarisation equivalent, no vendor gatekeeper. Repo signing (GPG for deb/rpm)
 4. A current standalone price for a code-signing hardware token.
 5. Whether sqlcipher3 0.6.2 has been tested **together with** sqlite-vec. The SQLite versions are compatible (3.51.1 >= 3.42) but no direct evidence of joint use was found.
 6. Whether the MSIX route permits everything footprint needs — relevant if the capture daemon requires capabilities a packaged app cannot hold.
-7. Whether an OV certificate is even purchasable by an individual in Malaysia without a registered business entity.
+7. ~~Whether an OV certificate is purchasable by an individual in Malaysia without a registered business entity~~ — **CLOSED 2026-09-25: yes.** See "Can a Malaysian individual actually buy a code-signing certificate?" above. Residual: whether an individual-validated (non-EV) certificate accumulates SmartScreen publisher reputation is a high-confidence inference, not a Microsoft-documented guarantee — get it in writing from the CA before paying. Also unverified: Sectigo's individual route (FAQ indicates yes, detailed KB unreadable), and international token shipping terms to Malaysia.
 
 ---
 
