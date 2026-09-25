@@ -545,7 +545,7 @@ Removing footprint must remove the daemon's auto-start registration and the sche
 
 ### The two seams
 
-**Two seams, both at boundaries the product already has. No internal seam.**
+**Two seams, both at boundaries the product already has.** S1 and S2 are the architectural seams, and the prior art at the end of this section confirms them. It also identifies one property neither can observe, and proposes a **test-only** addition for it — A-13 — which is deliberately not a production abstraction.
 
 **S1 — the daemon process boundary, entered two ways.** The CLI for write and operational paths (capture, unlock, import, exclude, prune, export, verify) and **MCP stdio for read paths**. Tests drive the real daemon process. Evidence verification rides this seam by exposing a `verify` CLI verb, so the verifier needs no seam of its own.
 
@@ -568,7 +568,7 @@ Removing footprint must remove the daemon's auto-start registration and the sche
 |---|---|---|
 | T-1 | The six advertised MCP tools, and **only** those six; no write, SQL, web or URL tool exists | S1 (MCP) |
 | T-2 | Every MCP tool fails closed with a structured error while the store is locked, and the server never prompts for a key | S1 (MCP) |
-| T-3 | The raw store file contains no plaintext for any ingested content — **including FTS5 terms and embedding bytes** | S1 (CLI, then file assertion) |
+| T-3 | The raw store file contains no plaintext for any ingested content — **including FTS5 terms, the FTS5 shadow tables and embedding bytes** — with a positive control | S1 triggers the writes; the **assertion** needs the store seam (A-13) |
 | T-4 | A wrong passphrase fails closed and the store is not readable | S1 (CLI) |
 | T-5 | Per-source participant filtering: non-participant fixtures produce zero records | S2 |
 | T-6 | Exclusion is pre-ingest: an excluded record reaches neither the index, the embeddings, nor the manifest | S1 (CLI + verify) |
@@ -585,7 +585,69 @@ Removing footprint must remove the daemon's auto-start registration and the sche
 
 ### Prior art
 
-**Pending.** A research pass is in flight on test-harness prior art for exactly these two seams — MCP stdio end-to-end testing, encrypted-store leak assertions, per-user daemon lifecycle tests across the three platforms, delegated-OAuth fixture patterns, and RFC 6962 verifier test vectors. This section will name the harnesses and patterns it recommends; the seam decisions above do not depend on the outcome.
+Researched after the seam decision. It **confirms S1 and S2 as the architectural seams** and surfaces one property neither can observe — see "The gap this surfaced" at the end of this section.
+
+#### MCP stdio end-to-end (S1)
+
+**An official conformance suite exists — `modelcontextprotocol/conformance`**, run as `npx @modelcontextprotocol/conformance`. It supports footprint's target revision directly (`--spec-version 2025-11-25`), validates every JSON-RPC message on the wire against the spec's JSON schema for the negotiated version (`wire-schema-valid`), and ships per-revision requirement sets plus an `--expected-failures` baseline with stale-entry detection. **But its server mode is HTTP-only** (`conformance server --url ...`), and the repository tree contains **zero stdio paths**. Spec-conformance coverage of a stdio server is therefore not directly available.
+
+**The Python SDK's own suite is the model to copy** — `tests/transports/stdio/`. It spawns **real subprocesses** and monkeypatches `_create_platform_compatible_process` / `_terminate_process_tree` to *record calls while the real implementations still run*; teardown SIGKILLs each spawn-time process group so a crashed test cannot orphan a sleep-forever subprocess. `test_posix.py` asserts a gracefully exiting server's child survives client shutdown, and that a surviving child's write to inherited stdout fails with `EPIPE`. `test_windows.py` asserts the **Windows Job Object** reaps the child — which differs from POSIX — plus selector fallback and CRLF framing. `_liveness.py` proves child liveness through an out-of-band TCP connect-back rather than trusting stdout.
+
+**The documented default is the trap.** Both official SDKs document *in-process* testing (`Client(mcp)`, "no subprocess, no port, nothing on the wire") — a mode that **cannot see the process boundary at all**, and therefore cannot see stdio framing, child cleanup, `EPIPE`, lock contention, fail-closed-when-locked, or daemon-restart persistence. S1's tests must spawn the real CLI and daemon over a real pipe.
+
+**Drivers.** The official `mcp` SDK `Client` over `stdio_client(StdioServerParameters(...))` — it spawns a real subprocess, it is what the SDK tests itself with, and it is the same client the consumer uses. **MCP Inspector CLI** (`mcp-inspector --cli <cmd> --method tools/list --format json`) is a black-box smoke driver with stable exit codes (0 ok, 1 usage, 2 no app, 3 auth, 4 unreachable, 5 tool error) and one JSON line on stderr, so it is branchable in CI. `mcp-pytest` exists but is single-author v0.1.1 — acceptable as a smoke driver, not as the conformance gate.
+
+**Regret this avoids:** in-process-only MCP testing, whose scars are visible in the SDK itself as `test_posix.py` / `test_windows.py`.
+
+#### Encrypted-store leak assertions
+
+**The leak surface is documented** (Zetetic, SQLCipher Design): each page encrypted individually at 4096 bytes, every page write carrying an HMAC-SHA512 checked on read, the whole file appearing as random data. Journals are encrypted — a rollback journal has an unencrypted header but no data — and WAL pages and statement journals are encrypted. **The critical exception: "Other transient files are not encrypted, so you must disable file based temporary storage if your application will use temp space."**
+
+**footprint-specific finding.** `sqlcipher3` 0.6.2's `setup.py` already sets `SQLITE_TEMP_STORE=2`, `SQLITE_HAS_CODEC=1` and `SQLITE_DEFAULT_PAGE_SIZE=4096`, so the wheel is built with the safe temp-store configuration. **Assert it at runtime anyway** (`PRAGMA temp_store` must be 2/MEMORY), because a rebuild or a different binding can regress it. The same build sets `SQLITE_ENABLE_LOAD_EXTENSION=1` — which is what lets sqlite-vec load, and also means the daemon must keep `sqlite3_enable_load_extension` **off** by default.
+
+**How to assert "no plaintext" without a flaky `strings` grep.** A canary corpus — an ASCII canary, a UTF-8 multibyte canary, a long one — inserted as column values, then a byte-level search of the **entire data directory**: main file, `-wal`, `-shm`, `-journal`, any `VACUUM INTO` target, and the OS temp directory the process was given. Run it after every write path: insert, FTS `optimize`, vector insert, prune, export, `VACUUM`, WAL checkpoint, close. **Then run the identical scan against a deliberately-plaintext control database and assert the canary IS found.** Without that positive control, a broken scanner, a wrong path or an empty file all pass vacuously — **that control is the whole trick.**
+
+**Do not gate on entropy or `strings`.** `strings` misses short and multibyte secrets and false-positives on random bytes that happen to be printable; Shannon entropy is a statistical test with false alarms. Smoke checks at most.
+
+**Structural assertions.** The first 16 bytes must not equal `SQLite format 3\0`; `PRAGMA cipher_plaintext_header_size` must be 0, since a recognisable SQLite header is itself a metadata leak. `PRAGMA cipher_integrity_check` must return empty — and the checker must be **self-tested** by corrupting one byte and asserting it names *that* page. SQLCipher's own `test/sqlcipher-core.test` asserts the magic is absent; `test/sqlcipher-integrity.test` shows a middle-page corruption reading as `database disk image is malformed` and a page-1 corruption as `file is not a database`, and that `cipher_use_hmac=OFF` makes the same corruption read as `ok`.
+
+**Enumerate the leak vectors as separate tests**, because each is a real regression risk: a plaintext `ATTACH` target; `VACUUM INTO`; `PRAGMA temp_store=FILE`; a `-wal` left behind after a crash; `sqlite3_backup`; the export verb; crash mid-transaction then restart; `PRAGMA mmap_size`.
+
+#### Per-user daemon lifecycle, without a CI machine per OS
+
+**`uniservice`** is the closest match: it delegates to `systemd --user` / LaunchAgents / Windows Scheduled Tasks, and its suite is deliberately two-layer. **Artifact tests run everywhere** and assert the *generated unit / plist / Task XML as data*; **live lifecycle tests are opt-in and capability-gated** — skipped unless an environment variable is set, and each additionally skips itself when the host lacks a usable manager (`systemctl --user is-system-running`, `launchctl print gui/$uid`, `schtasks.exe`). The Linux live test asserts the full contract: add → appears in `list_info()` → `enabled` → `running` → remove → gone.
+
+**Tailscale** (`tstest/integration`) is the "build once, spawn the real binary per test" model, with an in-process control plane rather than a mocked daemon.
+
+**Single-instance locking.** `portalocker` / `filelock` abstract `fcntl.flock` / `lockf` and `msvcrt.locking` / `LockFileEx`. Test by launching **two real subprocesses** and asserting the second exits with a distinct code — **and that the lock is released after `SIGKILL`**, since a stale lock blocking restart is the classic failure.
+
+**`docker-systemctl-replacement`** executes unit files without systemd, so `systemctl --user enable/start/status` semantics can be exercised in a plain container with no user session bus.
+
+**Regret this avoids:** mocking `systemctl` / `launchctl` / `schtasks`. Tests pass, the unit file is malformed, the daemon never auto-starts. Every project surveyed either tests the generated artifact as data or runs the real manager.
+
+#### Connector and OAuth fixtures (S2)
+
+**Fake authorization servers good enough to drive a real client exist and are mature.** `oauth2-mock-server` (axa-group, npm) covers Authorization Code **with PKCE**, refresh-token, client-credentials, ROPC and JWT-bearer, with discovery and JWKS serving **real signed tokens** ("without mocking the verification layer"), per-test overrides for forcing `invalid_grant` or expiring a token, and it runs **in-process or standalone as a process for non-JS projects — explicitly including Python**. `mock-oauth2-server` (navikt) is the Kotlin/Docker alternative; `node-oidc-provider` is the option if a *spec-conformant* OP is wanted rather than a mock.
+
+**The field has converged on a split, and it is the recommendation.** The **auth plane** is driven against a real fake authorization-server process — hand-mocking OAuth is the regret, because the flow is stateful (authorize → code → token → refresh → revoke, PKCE, state/nonce, clock skew, discovery) and the mock drifts, so the test passes while the refresh path — the one that actually breaks in production — stays dark. The **data plane** uses recorded cassettes (`vcrpy`) plus a few `Prism` / Schemathesis contract checks so cassette rot is detected. **Never record real tokens:** scrub at record time and re-mint from the fake authorization server at replay time.
+
+#### Transparency-log verifier testing
+
+**Third-party test vectors exist.** `transparency-dev/merkle` — the Trillian Merkle library, used by CT, Rekor and sumdb — publishes canonical ground truth (`LeafInputs()`, `NodeHashes()`, `RootHashes()`, `CompactTrees()`, `EmptyRootHash()`), and its `testonly/vectors_test.go` reproduces the **Subtree Test Vectors appendix of `draft-ietf-plants-merkle-tree-certs`**, folding every valid subtree hash for trees up to size 130 into one rolling SHA-256 and comparing against the value published in the draft. That is an external vector set, not a self-consistency check.
+
+**Test the verifier against a third thing, never against the writer.** The library keeps a deliberately naive reference implementation (`refRootHash`, `refInclusionProof`, `refConsistencyProof`) that "directly implement[s] the definitions from RFC 6962", and its own comment says it exists "only for testing correctness of other more flexible and performant algorithms". Writer and verifier are each checked against the reference — never against each other — plus **checked-in frozen fixtures** (log + proof + root) so the verifier test never runs the writer, which is the only way to catch a *coordinated* writer-and-verifier bug. Fuzzing runs in both directions: writer against the reference, and writer through to the verifier.
+
+**Tamper cases are first-class tests:** truncate the proof, flip a hash byte, swap sibling order, use a proof for a different index, use a consistency proof for an older size, reuse a leaf hash as an interior node. Each must be rejected.
+
+**This is not theoretical.** CVE-2026-56865 / GO-2026-6179: `golang.org/x/mod/sumdb/tlog`'s `tileHashReader.ReadHashes` did not verify all tiles against their parents, so a malicious GOPROXY could forge up to two sumdb tiles and **bypass the GOSUMDB check**, persisting attacker-controlled module content. CVSS 8.4, CWE-347, fixed in `x/mod` 0.40.0 — in a mature, heavily reviewed library. **This is the strongest single argument for treating the verifier as a separately tested artifact**, and why its tests deliberately do **not** go through S1 even though the CLI verb that invokes it does.
+
+#### The gap this surfaced — needs a decision
+
+The research **confirms S1 and S2 are the right architectural seams**, and identifies one property **neither seam can observe**: **store encryption-at-rest**. "Nothing leaks outside the cipher boundary" is a property of a *file*, asserted by scanning bytes on disk including the OS temp directory and every journal and WAL sidecar. S1 can *trigger* writes, but it cannot *observe* the file. Since this is a hard product claim (§4 — the host's disk encryption is not assumed), it is the one property in the spec that currently has no way to be tested.
+
+The recommendation is a **third, test-only seam**: a `Store` interface whose only production implementation is SQLCipher-on-disk, and whose test surface is "open the real file with the real key" and "scan the real bytes". Deliberately **not** a production abstraction with two implementations — the prior art (SQLCipher's own suite, and the canary plus positive-control pattern) lives entirely at that level, and prior art treats at-rest encryption as its own concern, separate from the database's own suite. See [Appendix A, A-13](#appendix-a--open-questions-with-triggers).
+
+A second candidate is flagged rather than resolved: if **"local-only by default"** is a property the product intends to *test* rather than assert, S1 can observe inference outputs but cannot prove the absence of egress, and that would be a fourth seam. The recommendation is to keep it an asserted property with a static check rather than a seam — unless the claim is one the product wants to prove.
 
 ## Out of scope
 
@@ -629,6 +691,7 @@ Each carries the **event that resolves it**, so none can be left dangling indefi
 | A-10 | **M365 versus Google Workspace prioritisation.** No installed-base split for Malaysia is established, so prioritisation between the two connector families is a judgement call rather than a sourced conclusion. | **When a second connector family is added.** |
 | A-11 | **Per-source capture cadence.** Each source has its own retention window (Google Meet transcript entries 30 days; Teams deleted messages 21 days; deleted users/teams 30 days). The polling interval per source needs to be set against the tightest window it serves. | **At connector implementation**, per source. |
 | A-12 | **Export format and portability contract.** What travels with the user, and in what format, given that the store is encrypted and the tool may not exist in 20 years. | **Before v1 ships**, since it is a user-facing promise. |
+| A-13 | **A test-only seam for store encryption-at-rest.** "Nothing leaks outside the cipher boundary" is a property of a *file*, and neither S1 nor S2 can observe it — S1 can trigger writes but cannot scan bytes. Recommendation: a `Store` interface whose only production implementation is SQLCipher-on-disk, **test-only**, deliberately not a production abstraction with two implementations. A second candidate — treating "local-only by default" as a *tested* rather than asserted property — would be a fourth seam; the recommendation is a static check instead. | **Before the first store test is written.** |
 
 ## Appendix B — Referenced decisions, ADRs and research
 
